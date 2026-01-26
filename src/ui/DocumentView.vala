@@ -1349,8 +1349,19 @@ namespace GDiagram {
                 return DiagramType.SEQUENCE;
             }
 
-            // Check for activity diagram indicators (high priority)
-            // Activity diagrams have distinctive syntax that can't be confused
+            // Check for state diagram indicators BEFORE activity
+            // State diagrams have very specific keywords: [*], state, -->
+            bool has_state_syntax =
+                lower.contains("[*]") ||
+                lower.contains("\nstate ") ||
+                lower.has_prefix("state ");
+
+            if (has_state_syntax) {
+                return DiagramType.STATE;
+            }
+
+            // Check for activity diagram indicators (after state check)
+            // Activity diagrams have distinctive syntax
             bool has_start_stop = lower.contains("\nstart") || lower.contains("\nstop") ||
                                   lower.has_prefix("@startuml\nstart") ||
                                   lower.has_prefix("@startuml\r\nstart");
@@ -1365,16 +1376,6 @@ namespace GDiagram {
 
             if (has_start_stop || has_activity_syntax) {
                 return DiagramType.ACTIVITY;
-            }
-
-            // Check for state diagram indicators
-            bool has_state_syntax =
-                lower.contains("[*]") ||
-                lower.contains("\nstate ") ||
-                lower.has_prefix("state ");
-
-            if (has_state_syntax) {
-                return DiagramType.STATE;
             }
 
             // Check for use case diagram indicators
