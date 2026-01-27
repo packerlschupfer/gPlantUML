@@ -138,8 +138,14 @@ namespace GDiagram {
                 return;
             }
 
-            // End frame
+            // End frame (but not "end note")
             if (check(TokenType.END)) {
+                // Check if it's "end note" - if so, skip both tokens
+                if (current + 1 < tokens.size && tokens.get(current + 1).token_type == TokenType.NOTE) {
+                    advance(); // skip 'end'
+                    advance(); // skip 'note'
+                    return;
+                }
                 parse_frame_end();
                 return;
             }

@@ -1849,6 +1849,16 @@ namespace GDiagram {
                     sb.append(err.to_string());
                     sb.append("\n");
                 }
+
+                // Log errors in debug mode
+                bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+                if (debug) {
+                    printerr("[PARSE ERRORS] SEQUENCE diagram has %d error(s):\n", diagram.errors.size);
+                    foreach (var err in diagram.errors) {
+                        printerr("  %s\n", err.to_string());
+                    }
+                }
+
                 preview_pane.set_placeholder_text(sb.str);
                 return;
             }
