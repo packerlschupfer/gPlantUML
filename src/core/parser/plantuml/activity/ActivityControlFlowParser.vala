@@ -285,6 +285,11 @@ namespace GDiagram {
         public void parse_fork(ref int position, int source_line) throws Error {
             current = position;
 
+            // Safety: variables for loop protection
+            int max_iterations = tokens.size * 2;
+            int iterations = 0;
+            int pos_before;
+
             // Check for optional color: fork (#color) or fork (color)
             string? fork_color = null;
             if (match(TokenType.LPAREN)) {
@@ -316,9 +321,17 @@ namespace GDiagram {
 
             // First branch
             last_node = fork_node;
-            while (!check_fork_again() && !check_end_fork() && !is_at_end()) {
+
+            // Safety: prevent infinite loop
+            iterations = 0;
+            while (!check_fork_again() && !check_end_fork() && !is_at_end() && iterations < max_iterations) {
+                pos_before = current;
                 parse_statement_callback();
                 skip_newlines_callback();
+                iterations++;
+                if (current == pos_before && !is_at_end()) {
+                    current++;
+                }
             }
             if (last_node != null && last_node != fork_node) {
                 branch_ends.add(last_node);
@@ -329,9 +342,15 @@ namespace GDiagram {
                 skip_newlines_callback();
                 last_node = fork_node;
 
-                while (!check_fork_again() && !check_end_fork() && !is_at_end()) {
+                iterations = 0;
+                while (!check_fork_again() && !check_end_fork() && !is_at_end() && iterations < max_iterations) {
+                    pos_before = current;
                     parse_statement_callback();
                     skip_newlines_callback();
+                    iterations++;
+                    if (current == pos_before && !is_at_end()) {
+                        current++;
+                    }
                 }
                 if (last_node != null && last_node != fork_node) {
                     branch_ends.add(last_node);
@@ -364,6 +383,11 @@ namespace GDiagram {
         public void parse_split(ref int position, int source_line) throws Error {
             current = position;
 
+            // Safety: variables for loop protection
+            int max_iterations = tokens.size * 2;
+            int iterations = 0;
+            int pos_before;
+
             // Check for optional color: split (color)
             string? split_color = null;
             if (match(TokenType.LPAREN)) {
@@ -393,9 +417,17 @@ namespace GDiagram {
 
             // First branch
             last_node = split_node;
-            while (!check_split_again() && !check_end_split() && !is_at_end()) {
+
+            // Safety: prevent infinite loop
+            iterations = 0;
+            while (!check_split_again() && !check_end_split() && !is_at_end() && iterations < max_iterations) {
+                pos_before = current;
                 parse_statement_callback();
                 skip_newlines_callback();
+                iterations++;
+                if (current == pos_before && !is_at_end()) {
+                    current++;
+                }
             }
             if (last_node != null && last_node != split_node) {
                 branch_ends.add(last_node);
@@ -406,9 +438,15 @@ namespace GDiagram {
                 skip_newlines_callback();
                 last_node = split_node;
 
-                while (!check_split_again() && !check_end_split() && !is_at_end()) {
+                iterations = 0;
+                while (!check_split_again() && !check_end_split() && !is_at_end() && iterations < max_iterations) {
+                    pos_before = current;
                     parse_statement_callback();
                     skip_newlines_callback();
+                    iterations++;
+                    if (current == pos_before && !is_at_end()) {
+                        current++;
+                    }
                 }
                 if (last_node != null && last_node != split_node) {
                     branch_ends.add(last_node);
@@ -439,6 +477,11 @@ namespace GDiagram {
          */
         public void parse_while(ref int position, int source_line) throws Error {
             current = position;
+
+            // Safety: variables for loop protection
+            int max_iterations = tokens.size * 2;
+            int iterations = 0;
+            int pos_before;
 
             // Check for optional color: while (#color) (condition) or while (color) (condition)
             string? while_color = null;
@@ -488,9 +531,16 @@ namespace GDiagram {
             skip_newlines_callback();
             last_node = cond_node;
 
-            while (!check(TokenType.ENDWHILE) && !is_at_end()) {
+            // Safety: prevent infinite loop
+            iterations = 0;
+            while (!check(TokenType.ENDWHILE) && !is_at_end() && iterations < max_iterations) {
+                pos_before = current;
                 parse_statement_callback();
                 skip_newlines_callback();
+                iterations++;
+                if (current == pos_before && !is_at_end()) {
+                    current++;
+                }
             }
 
             // Connect back to condition
@@ -530,6 +580,11 @@ namespace GDiagram {
         public void parse_repeat(ref int position, int source_line) throws Error {
             current = position;
 
+            // Safety: variables for loop protection
+            int max_iterations = tokens.size * 2;
+            int iterations = 0;
+            int pos_before;
+
             var repeat_start = new ActivityNode(ActivityNodeType.MERGE, null, source_line);
             add_node_callback(repeat_start);
 
@@ -537,9 +592,17 @@ namespace GDiagram {
 
             // Parse loop body until "repeat while" or "backward"
             string? backward_label = null;
-            while (!check_repeat_while() && !check_backward() && !is_at_end()) {
+
+            // Safety: prevent infinite loop
+            iterations = 0;
+            while (!check_repeat_while() && !check_backward() && !is_at_end() && iterations < max_iterations) {
+                pos_before = current;
                 parse_statement_callback();
                 skip_newlines_callback();
+                iterations++;
+                if (current == pos_before && !is_at_end()) {
+                    current++;
+                }
             }
 
             // Check for backward label
@@ -622,6 +685,11 @@ namespace GDiagram {
         public void parse_switch(ref int position, int source_line) throws Error {
             current = position;
 
+            // Safety: variables for loop protection
+            int max_iterations = tokens.size * 2;
+            int iterations = 0;
+            int pos_before;
+
             // Parse switch condition
             string condition = "";
             if (match(TokenType.LPAREN)) {
@@ -650,8 +718,11 @@ namespace GDiagram {
                 bool first_in_case = true;
 
                 // Parse case body
-                while (!check(TokenType.CASE) && !check(TokenType.ENDSWITCH) && !is_at_end()) {
+                // Safety: prevent infinite loop
+                iterations = 0;
+                while (!check(TokenType.CASE) && !check(TokenType.ENDSWITCH) && !is_at_end() && iterations < max_iterations) {
                     int before_count = diagram.nodes.size;
+                    pos_before = current;
                     parse_statement_callback();
 
                     // Label the first edge from switch to this case
@@ -666,6 +737,10 @@ namespace GDiagram {
                     }
 
                     skip_newlines_callback();
+                    iterations++;
+                    if (current == pos_before && !is_at_end()) {
+                        current++;
+                    }
                 }
 
                 // Save the end of this case branch

@@ -1426,6 +1426,8 @@ namespace GDiagram {
 
             // Check for component diagram indicators
             bool has_component_syntax =
+                lower.contains("\npackage ") ||
+                lower.has_prefix("package ") ||
                 lower.contains("\ncomponent ") ||
                 lower.contains("\n[") ||
                 lower.contains("\ncloud ") ||
