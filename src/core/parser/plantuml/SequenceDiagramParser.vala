@@ -610,10 +610,38 @@ namespace GDiagram {
                 }
             }
 
-            // Get note text after colon
+            // Get note text
             string text = "";
             if (match(TokenType.COLON)) {
+                // Single-line note: note right: text
                 text = consume_rest_of_line();
+            } else {
+                // Multi-line note: note right \n text \n end note
+                skip_newlines();
+                var sb = new StringBuilder();
+
+                // Consume until "end note"
+                while (!is_at_end()) {
+                    if (check(TokenType.END)) {
+                        if (current + 1 < tokens.size && tokens.get(current + 1).token_type == TokenType.NOTE) {
+                            advance(); // consume 'end'
+                            advance(); // consume 'note'
+                            break;
+                        }
+                    }
+
+                    Token t = advance();
+                    if (t.token_type == TokenType.NEWLINE) {
+                        sb.append("\n");
+                    } else {
+                        if (sb.len > 0 && !sb.str.has_suffix("\n")) {
+                            sb.append(" ");
+                        }
+                        sb.append(t.lexeme);
+                    }
+                }
+
+                text = sb.str.strip();
             }
 
             var note = new Note(text, position);

@@ -62,6 +62,9 @@ namespace GDiagram {
          * Parse if/elseif/else/endif statement.
          */
         public void parse_if(ref int position, int source_line) throws Error {
+            bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+            if (debug) print("[DEBUG] parse_if() ENTERED at line %d\n", source_line);
+
             current = position;
 
             // Track all branch ends for connecting to merge
@@ -110,14 +113,34 @@ namespace GDiagram {
             skip_newlines_callback();
             last_node = cond_node;
 
-            // Safety: prevent infinite loop
+            if (debug) print("[DEBUG]   Parsing THEN branch...\n");
+
+            // Safety: prevent infinite loop AND track nesting depth
             int max_iterations = tokens.size * 2;
             int iterations = 0;
             int pos_before;
+            int nesting_depth = 0;  // Track nested if/while/fork constructs
 
-            while (!check(TokenType.ELSE) && !check(TokenType.ELSEIF) &&
-                   !check(TokenType.ENDIF) && !is_at_end() && iterations < max_iterations) {
+            while (!is_at_end() && iterations < max_iterations) {
+                // Check for branch-ending keywords only at depth 0
+                if (nesting_depth == 0 && (check(TokenType.ELSE) || check(TokenType.ELSEIF) || check(TokenType.ENDIF))) {
+                    break;
+                }
+
                 pos_before = current;
+                if (debug && iterations > 0 && iterations % 20 == 0) {
+                    print("[DEBUG]     THEN loop iteration %d, depth=%d, token='%s'\n", iterations, nesting_depth, peek().lexeme);
+                }
+
+                // Track nesting depth before parsing
+                if (check(TokenType.IF) || check(TokenType.WHILE) || check(TokenType.REPEAT) ||
+                    check(TokenType.FORK) || check(TokenType.SPLIT) || check(TokenType.SWITCH)) {
+                    nesting_depth++;
+                } else if (check(TokenType.ENDIF) || check(TokenType.ENDWHILE) ||
+                           check_end_fork() || check_end_split() || check(TokenType.ENDSWITCH)) {
+                    nesting_depth--;
+                }
+
                 parse_statement_callback();
                 skip_newlines_callback();
                 iterations++;
@@ -127,6 +150,8 @@ namespace GDiagram {
                     current++;
                 }
             }
+
+            if (debug) print("[DEBUG]   THEN branch complete after %d iterations, final depth=%d\n", iterations, nesting_depth);
 
             // Mark the yes branch edge
             foreach (var edge in diagram.edges) {
@@ -145,8 +170,11 @@ namespace GDiagram {
             ActivityNode last_cond = cond_node;
 
             // Parse 'elseif' branches
+            if (debug) print("[DEBUG]   Checking for ELSEIF branches...\n");
             while (match(TokenType.ELSEIF)) {
                 int elseif_line = previous().line;
+                if (debug) print("[DEBUG]   Found ELSEIF at line %d\n", elseif_line);
+
                 string elseif_cond = "";
                 if (match(TokenType.LPAREN)) {
                     elseif_cond = consume_until_rparen_callback();
@@ -174,11 +202,26 @@ namespace GDiagram {
                 skip_newlines_callback();
                 last_node = elseif_node;
 
-                // Safety: prevent infinite loop
+                // Safety: prevent infinite loop AND track nesting depth
                 iterations = 0;
-                while (!check(TokenType.ELSE) && !check(TokenType.ELSEIF) &&
-                       !check(TokenType.ENDIF) && !is_at_end() && iterations < max_iterations) {
+                nesting_depth = 0;
+                while (!is_at_end() && iterations < max_iterations) {
+                    // Check for branch-ending keywords only at depth 0
+                    if (nesting_depth == 0 && (check(TokenType.ELSE) || check(TokenType.ELSEIF) || check(TokenType.ENDIF))) {
+                        break;
+                    }
+
                     pos_before = current;
+
+                    // Track nesting depth
+                    if (check(TokenType.IF) || check(TokenType.WHILE) || check(TokenType.REPEAT) ||
+                        check(TokenType.FORK) || check(TokenType.SPLIT) || check(TokenType.SWITCH)) {
+                        nesting_depth++;
+                    } else if (check(TokenType.ENDIF) || check(TokenType.ENDWHILE) ||
+                               check_end_fork() || check_end_split() || check(TokenType.ENDSWITCH)) {
+                        nesting_depth--;
+                    }
+
                     parse_statement_callback();
                     skip_newlines_callback();
                     iterations++;
@@ -206,7 +249,10 @@ namespace GDiagram {
             }
 
             // Parse 'else' branch
+            if (debug) print("[DEBUG]   Checking for ELSE branch...\n");
             if (match(TokenType.ELSE)) {
+                if (debug) print("[DEBUG]   Found ELSE, parsing branch...\n");
+
                 string no_label = "no";
                 if (match(TokenType.LPAREN)) {
                     no_label = consume_until_rparen_callback();
@@ -216,10 +262,29 @@ namespace GDiagram {
                 skip_newlines_callback();
                 last_node = last_cond;
 
-                // Safety: prevent infinite loop
+                // Safety: prevent infinite loop AND track nesting depth
                 iterations = 0;
-                while (!check(TokenType.ENDIF) && !is_at_end() && iterations < max_iterations) {
+                nesting_depth = 0;
+                while (!is_at_end() && iterations < max_iterations) {
+                    // Check for ENDIF only at depth 0
+                    if (nesting_depth == 0 && check(TokenType.ENDIF)) {
+                        break;
+                    }
+
                     pos_before = current;
+                    if (debug && iterations > 0 && iterations % 20 == 0) {
+                        print("[DEBUG]     ELSE loop iteration %d, depth=%d, token='%s'\n", iterations, nesting_depth, peek().lexeme);
+                    }
+
+                    // Track nesting depth
+                    if (check(TokenType.IF) || check(TokenType.WHILE) || check(TokenType.REPEAT) ||
+                        check(TokenType.FORK) || check(TokenType.SPLIT) || check(TokenType.SWITCH)) {
+                        nesting_depth++;
+                    } else if (check(TokenType.ENDIF) || check(TokenType.ENDWHILE) ||
+                               check_end_fork() || check_end_split() || check(TokenType.ENDSWITCH)) {
+                        nesting_depth--;
+                    }
+
                     parse_statement_callback();
                     skip_newlines_callback();
                     iterations++;
@@ -229,6 +294,8 @@ namespace GDiagram {
                         current++;
                     }
                 }
+
+                if (debug) print("[DEBUG]   ELSE branch complete after %d iterations, final depth=%d\n", iterations, nesting_depth);
 
                 // Mark the no branch edge
                 foreach (var edge in diagram.edges) {
@@ -244,8 +311,10 @@ namespace GDiagram {
                 }
             }
 
+            if (debug) print("[DEBUG]   Looking for ENDIF...\n");
             match(TokenType.ENDIF);
             int endif_line = previous().line;
+            if (debug) print("[DEBUG]   Found ENDIF at line %d\n", endif_line);
 
             // Create merge point
             var merge = new ActivityNode(ActivityNodeType.MERGE, null, endif_line);
@@ -277,6 +346,8 @@ namespace GDiagram {
 
             last_node = merge;
             position = current;
+
+            if (debug) print("[DEBUG] parse_if() EXITING normally\n");
         }
 
         /**

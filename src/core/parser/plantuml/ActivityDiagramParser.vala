@@ -13,6 +13,10 @@ namespace GDiagram {
         private Gee.HashMap<string, ActivityNode> connectors;
         private Gee.ArrayList<ActivityNode> pending_breaks;
 
+        // Recursion depth tracking to prevent stack overflow
+        private int recursion_depth = 0;
+        private const int MAX_RECURSION_DEPTH = 100;
+
         // Specialized parsers
         private ActivityParserUtils utils;
         private ActivityEdgeParser edge_parser;
@@ -30,6 +34,9 @@ namespace GDiagram {
         }
 
         public ActivityDiagram parse(Gee.ArrayList<Token> tokens) {
+            bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+            if (debug) print("[DEBUG] ActivityDiagramParser.parse() - Resetting state...\n");
+
             this.tokens = tokens;
             this.current = 0;
             this.diagram = new ActivityDiagram();
@@ -38,6 +45,9 @@ namespace GDiagram {
             this.current_partition = null;
             this.connectors.clear();
             this.pending_breaks.clear();
+            this.recursion_depth = 0;
+
+            if (debug) print("[DEBUG] State reset, initializing parsers...\n");
 
             // Initialize specialized parsers
             utils = new ActivityParserUtils(tokens, ref current);
@@ -66,12 +76,17 @@ namespace GDiagram {
 
             metadata_parser.set_edge_parser(edge_parser);
 
+            if (debug) print("[DEBUG] Starting parse_diagram()...\n");
+
             try {
                 parse_diagram();
+                if (debug) print("[DEBUG] parse_diagram() completed successfully\n");
             } catch (Error e) {
+                if (debug) printerr("[ERROR] parse_diagram() threw exception: %s\n", e.message);
                 diagram.errors.add(new ParseError(e.message, 1, 1));
             }
 
+            if (debug) print("[DEBUG] ActivityDiagramParser.parse() returning diagram with %d nodes\n", diagram.nodes.size);
             return diagram;
         }
 
@@ -87,11 +102,20 @@ namespace GDiagram {
             }
 
             // Parse statements until @enduml with iteration limit
+            bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
             int max_iterations = tokens.size * 2;
             int iterations = 0;
 
+            if (debug) print("[DEBUG] parse_diagram() main loop starting (max %d iterations)...\n", max_iterations);
+
             while (!check(TokenType.ENDUML) && !is_at_end() && iterations < max_iterations) {
                 int pos_before = current;
+
+                if (debug && iterations > 0 && iterations % 10 == 0) {
+                    print("[DEBUG]   Main loop iteration %d, token='%s' (type=%d) at line %d\n",
+                        iterations, peek().lexeme, peek().token_type, peek().line);
+                }
+
                 try {
                     parse_statement();
                 } catch (Error e) {
@@ -110,9 +134,37 @@ namespace GDiagram {
                     advance();
                 }
             }
+
+            if (debug) print("[DEBUG] parse_diagram() main loop complete after %d iterations\n", iterations);
         }
 
         private void parse_statement() throws Error {
+            // Recursion depth protection
+            recursion_depth++;
+            if (recursion_depth > MAX_RECURSION_DEPTH) {
+                bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+                if (debug) {
+                    printerr("[ERROR] Maximum recursion depth exceeded (%d) - likely infinite recursion\n", MAX_RECURSION_DEPTH);
+                }
+                diagram.errors.add(new ParseError(
+                    "Maximum recursion depth exceeded (too many nested constructs)",
+                    current < tokens.size ? peek().line : 1,
+                    1
+                ));
+                recursion_depth--;
+                return;
+            }
+
+            try {
+                parse_statement_impl();
+            } finally {
+                recursion_depth--;
+            }
+        }
+
+        private void parse_statement_impl() throws Error {
+            bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+
             skip_newlines();
 
             if (is_at_end() || check(TokenType.ENDUML)) {
@@ -125,6 +177,11 @@ namespace GDiagram {
             }
 
             int source_line = peek().line;
+
+            if (debug && recursion_depth > 5) {
+                print("[DEBUG] parse_statement depth=%d, line=%d, token='%s'\n",
+                    recursion_depth, source_line, peek().lexeme);
+            }
 
             // Simple node types - handle directly
             if (match(TokenType.START)) {
@@ -210,6 +267,7 @@ namespace GDiagram {
 
             // Delegate to ControlFlowParser
             if (match(TokenType.IF)) {
+                if (debug) print("[DEBUG]     Statement: IF\n");
                 control_flow_parser.parse_if(ref current, previous().line);
                 last_node = control_flow_parser.get_last_node();
                 return;
@@ -223,8 +281,10 @@ namespace GDiagram {
             }
 
             if (match(TokenType.WHILE)) {
+                if (debug) print("[DEBUG]     Statement: WHILE at line %d\n", previous().line);
                 control_flow_parser.parse_while(ref current, previous().line);
                 last_node = control_flow_parser.get_last_node();
+                if (debug) print("[DEBUG]     WHILE parsing complete\n");
                 return;
             }
 
@@ -278,8 +338,10 @@ namespace GDiagram {
             }
 
             if (match(TokenType.NOTE)) {
+                if (debug) print("[DEBUG]     Statement: NOTE at line %d\n", previous().line);
                 metadata_parser.set_last_node(last_node);
                 metadata_parser.parse_note(ref current, false);
+                if (debug) print("[DEBUG]     NOTE parsing complete\n");
                 return;
             }
 
@@ -373,6 +435,10 @@ namespace GDiagram {
             }
 
             // Unknown - skip
+            if (debug) {
+                print("[DEBUG]     Statement: UNKNOWN token='%s' (type=%d) at line %d - skipping\n",
+                    peek().lexeme, peek().token_type, peek().line);
+            }
             advance();
         }
 

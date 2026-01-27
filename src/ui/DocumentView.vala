@@ -1839,7 +1839,13 @@ namespace GDiagram {
         }
 
         private void render_sequence_diagram(string source) {
+            bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+            if (debug) print("[DEBUG] render_sequence_diagram() ENTERED\n");
+            if (debug) print("[DEBUG] Calling parser.parse()...\n");
+
             var diagram = parser.parse(source);
+
+            if (debug) print("[DEBUG] Parser returned, checking for errors...\n");
 
             if (diagram.has_errors()) {
                 apply_error_highlights(diagram.errors);
@@ -1851,7 +1857,6 @@ namespace GDiagram {
                 }
 
                 // Log errors in debug mode
-                bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
                 if (debug) {
                     printerr("[PARSE ERRORS] SEQUENCE diagram has %d error(s):\n", diagram.errors.size);
                     foreach (var err in diagram.errors) {
@@ -1865,7 +1870,9 @@ namespace GDiagram {
 
             clear_error_highlights();
 
+            if (debug) print("[DEBUG] Checking if diagram is empty...\n");
             if (diagram.participants.size == 0 && diagram.messages.size == 0) {
+                if (debug) print("[DEBUG] Empty diagram, showing placeholder\n");
                 preview_pane.set_placeholder_text(
                     "Enter PlantUML code to see preview.\n\n" +
                     "Sequence Example:\n" +
@@ -1883,13 +1890,40 @@ namespace GDiagram {
                 return;
             }
 
-            // Update outline
-            update_outline_from_sequence_diagram(diagram);
+            if (debug) print("[DEBUG] Diagram has %d participants, %d messages\n",
+                diagram.participants.size, diagram.messages.size);
 
+            // Sanity check: prevent rendering massive diagrams that will hang
+            if (diagram.participants.size > 50) {
+                var error_msg = "ERROR: Too many participants (%d)\n\n".printf(diagram.participants.size) +
+                    "This diagram has an unusually high number of participants which suggests\n" +
+                    "a parsing issue or auto-created phantom participants.\n\n" +
+                    "Declared participants in source: 4\n" +
+                    "Parser found: %d\n\n".printf(diagram.participants.size) +
+                    "This would cause the renderer to hang. Please check the diagram syntax.";
+
+                if (debug) {
+                    printerr("[ERROR] Refusing to render: %d participants (limit: 50)\n", diagram.participants.size);
+                    printerr("  This is likely a parser bug creating phantom participants\n");
+                }
+
+                preview_pane.set_placeholder_text(error_msg);
+                return;
+            }
+
+            // Update outline
+            if (debug) print("[DEBUG] Updating outline...\n");
+            update_outline_from_sequence_diagram(diagram);
+            if (debug) print("[DEBUG] Outline updated\n");
+
+            if (debug) print("[DEBUG] Calling renderer.render_to_surface() - THIS MAY HANG...\n");
             var surface = renderer.render_to_surface(diagram);
+            if (debug) print("[DEBUG] Renderer returned, surface: %s\n", surface != null ? "OK" : "NULL");
 
             if (surface != null) {
+                if (debug) print("[DEBUG] Setting surface on preview pane...\n");
                 preview_pane.set_surface(surface);
+                if (debug) print("[DEBUG] Transferring click regions...\n");
                 transfer_click_regions();
             } else {
                 preview_pane.set_placeholder_text("Failed to render diagram");

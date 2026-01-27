@@ -311,6 +311,13 @@ namespace GDiagram {
 
             var participant = new Participant(name);
             participants.add(participant);
+
+            // Debug: log phantom participant creation
+            bool debug = Environment.get_variable("G_MESSAGES_DEBUG") != null;
+            if (debug && participants.size > 10) {
+                printerr("[WARNING] Creating participant #%d: '%s'\n", participants.size, name);
+            }
+
             return participant;
         }
     }
